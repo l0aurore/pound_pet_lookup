@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         Neopets Pound Lookup Links
 // @namespace    neopets
-// @author       Laurore
-// @version      1.0
-// @description  Adds lookup links next to pet names in the Neopets pound
+// @version      2.0
+// @description  Adds lookup links and copy info buttons next to pet names in the Neopets pound
+// @author       You
 // @match        https://www.neopets.com/pound/*
 // @match        http://www.neopets.com/pound/*
-// @grant        none
+// @grant        GM_setClipboard
 // @run-at       document-end
-// @downloadURL  https://github.com/l0aurore/pound_pet_lookup/blob/main/pound_pet_lookup.user.js
-// @updateURL   https://github.com/l0aurore/pound_pet_lookup/blob/main/pound_pet_lookup.user.js
 // ==/UserScript==
 
 (function() {
@@ -24,6 +22,202 @@
         cursor: pointer;
         font-weight: bold;
     `;
+
+    const copyButtonStyle = `
+        color: #57a957;
+        margin-left: 5px;
+        font-size: 0.9em;
+        text-decoration: underline;
+        cursor: pointer;
+        font-weight: bold;
+    `;
+
+    /**
+     * Extracts pet information from the page
+     * @param {string} petId - The ID of the pet (e.g., "pet0", "pet1")
+     * @returns {Object} - The pet information object
+     */
+    function extractPetInfo(petId) {
+        const petInfo = {
+            name: '',
+            species: '',
+            color: '',
+            gender: ''
+        };
+
+        // Get the pet name
+        const nameElement = document.getElementById(`${petId}_name`);
+        if (nameElement) {
+            petInfo.name = nameElement.tagName === 'INPUT' ? nameElement.value : nameElement.textContent.trim();
+        }
+
+        // Direct lookup of pet attributes - most accurate method for Neopets pound page
+        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+        const speciesElement = document.getElementById(`${petId}_species`);
+        if (speciesElement) {
+            petInfo.species = speciesElement.textContent.trim();
+        }
+
+        const colorElement = document.getElementById(`${petId}_color`);
+        if (colorElement) {
+            petInfo.color = colorElement.textContent.trim();
+        }
+
+        const genderElement = document.getElementById(`${petId}_gender`);
+        if (genderElement) {
+            petInfo.gender = genderElement.textContent.trim();
+        }
+
+        // Fallback methods if direct IDs aren't found
+        if (!petInfo.species || !petInfo.color || !petInfo.gender) {
+            // Try to find associated pet attributes by looking at nearby elements
+            if (nameElement) {
+                // Method 1: Look for spans or divs with pet details nearby
+                const petContainer = nameElement.closest('div[id^="pet"]');
+                if (petContainer) {
+                    // Try to find a table with pet stats
+                    const statsTable = petContainer.querySelector(`table[id="${petId}_table"]`) ||
+                                       petContainer.querySelector('table');
+
+                    if (statsTable) {
+                        const rows = statsTable.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const cells = row.querySelectorAll('td');
+                            if (cells.length >= 2) {
+                                const label = cells[0].textContent.trim().toLowerCase();
+                                const value = cells[1].textContent.trim();
+
+                                if (label.includes('species')) {
+                                    petInfo.species = value;
+                                } else if (label.includes('colour') || label.includes('color')) {
+                                    petInfo.color = value;
+                                } else if (label.includes('gender')) {
+                                    petInfo.gender = value;
+                                }
+                            }
+                        });
+                    } else {
+                        // If no table, look for specific elements
+                        const allElements = petContainer.querySelectorAll('*');
+                        allElements.forEach(element => {
+                            const text = element.textContent.trim();
+                            if (text.includes('Species:')) {
+                                petInfo.species = text.replace('Species:', '').trim();
+                            }
+                            if (text.includes('Colour:') || text.includes('Color:')) {
+                                petInfo.color = text.replace(/Colou?r:/, '').trim();
+                            }
+                            if (text.includes('Gender:')) {
+                                petInfo.gender = text.replace('Gender:', '').trim();
+                            }
+                        });
+                    }
+                }
+
+                // Method 2: Check for species and color in the same row
+                const row = nameElement.closest('tr');
+                if (row) {
+                    const cells = row.querySelectorAll('td');
+                    cells.forEach(cell => {
+                        const text = cell.textContent.trim();
+                        if (text.includes('Species:')) {
+                            petInfo.species = text.replace('Species:', '').trim();
+                        }
+                        if (text.includes('Colour:') || text.includes('Color:')) {
+                            petInfo.color = text.replace(/Colou?r:/, '').trim();
+                        }
+                        if (text.includes('Gender:') || text.match(/\b(male|female)\b/i)) {
+                            petInfo.gender = text.includes('male') ? 'male' : 'female';
+                        }
+                    });
+                }
+
+                // Method 3: Look in nearby "pet details" container
+                const petDetailsContainer = nameElement.closest('.pet-row, .pet-details, .petdetails, .pet-container');
+                if (petDetailsContainer) {
+                    const detailsText = petDetailsContainer.textContent;
+
+                    // Extract species
+                    const speciesMatch = detailsText.match(/Species:\s*([a-zA-Z]+)/);
+                    if (speciesMatch && speciesMatch[1]) {
+                        petInfo.species = speciesMatch[1].trim();
+                    }
+
+                    // Extract color
+                    const colorMatch = detailsText.match(/Colou?r:\s*([a-zA-Z]+)/);
+                    if (colorMatch && colorMatch[1]) {
+                        petInfo.color = colorMatch[1].trim();
+                    }
+
+                    // Extract gender
+                    if (detailsText.match(/\b(male)\b/i)) {
+                        petInfo.gender = 'male';
+                    } else if (detailsText.match(/\b(female)\b/i)) {
+                        petInfo.gender = 'female';
+                    }
+                }
+            }
+        }
+
+        // For test page compatibility - directly extract from data attributes if available
+        if (nameElement && nameElement.dataset) {
+            if (nameElement.dataset.species) petInfo.species = nameElement.dataset.species;
+            if (nameElement.dataset.color) petInfo.color = nameElement.dataset.color;
+            if (nameElement.dataset.gender) petInfo.gender = nameElement.dataset.gender;
+        }
+
+        return petInfo;
+    }
+
+    /**
+     * Creates a copy button for pet information
+     * @param {string} petId - The ID of the pet (e.g., "pet0", "pet1")
+     * @param {string} petName - The name of the pet
+     * @returns {HTMLElement} - The created button element
+     */
+    function createCopyButton(petId, petName) {
+        const button = document.createElement('a');
+        button.textContent = '[Copy !p]';
+        button.setAttribute('style', copyButtonStyle);
+        button.setAttribute('href', 'javascript:void(0);');
+        button.setAttribute('title', `Copy ${petName}'s for !p command`);
+
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+
+            // Extract pet number from ID (pet0 -> 0, pet1 -> 1, etc.)
+            const petNumber = petId.replace('pet', '');
+
+            // Get pet information
+            const petInfo = extractPetInfo(petId);
+
+            // Format: !p s_name s_species s_color s_gender
+            // where s is the pet number (0, 1, 2, 3)
+            const clipboardText = `!p ${petInfo.name} \n ${petInfo.species} \n ${petInfo.color} \n ${petInfo.gender}`;
+
+            // Copy to clipboard
+            try {
+                // Use Tampermonkey's GM_setClipboard if available
+                if (typeof GM_setClipboard !== 'undefined') {
+                    GM_setClipboard(clipboardText);
+                    button.textContent = '[copied!]';
+                    setTimeout(() => { button.textContent = '[copy info]'; }, 2000);
+                } else {
+                    // Fallback to regular clipboard API
+                    navigator.clipboard.writeText(clipboardText).then(() => {
+                        button.textContent = '[copied!]';
+                        setTimeout(() => { button.textContent = '[copy info]'; }, 2000);
+                    });
+                }
+                console.log(`Copied to clipboard: ${clipboardText}`);
+            } catch (err) {
+                console.error('Failed to copy pet info: ', err);
+                alert(`Failed to copy. Text to copy: ${clipboardText}`);
+            }
+        });
+
+        return button;
+    }
 
     /**
      * Creates a lookup link for a pet name
@@ -41,7 +235,7 @@
     }
 
     /**
-     * Adds a lookup link next to a pet name element
+     * Adds a lookup link and copy button next to a pet name element
      * @param {string} elementId - The ID of the pet name element
      */
     function addLookupLinkToPet(elementId) {
@@ -72,12 +266,21 @@
             return;
         }
 
-        // Create and add the lookup link
+        // Create the lookup link and copy button
         const lookupLink = createLookupLink(petName);
+        const copyButton = createCopyButton(elementId.replace('_name', ''), petName);
+
+        // Extract just the ID part (e.g., "pet0" from "pet0_name")
+        const petId = elementId.replace('_name', '');
+
+        // Add both elements to the DOM
         if (petNameElement.nextSibling) {
+            // Insert in reverse order so they appear in the correct order
+            petNameElement.parentNode.insertBefore(copyButton, petNameElement.nextSibling);
             petNameElement.parentNode.insertBefore(lookupLink, petNameElement.nextSibling);
         } else {
             petNameElement.parentNode.appendChild(lookupLink);
+            petNameElement.parentNode.appendChild(copyButton);
         }
     }
 
@@ -87,11 +290,11 @@
     function processPage() {
         console.log('Neopets Pound Lookup Links script running...');
 
-        // This will add links for all pet name elements pet0_name through pet2_name
+        // This will add links for all pet name elements pet0_name through pet3_name
         addLookupLinkToPet('pet0_name');
         addLookupLinkToPet('pet1_name');
         addLookupLinkToPet('pet2_name');
-
+        addLookupLinkToPet('pet3_name');
 
         // Additional search for pet names that might follow different patterns
         // This is a backup approach to find pet elements
@@ -100,7 +303,7 @@
             if (!element.id) return;
             if (!element.id.includes('pet') || !element.id.includes('name')) return;
             // Skip elements we've already processed in the first section
-            if (['pet0_name', 'pet1_name', 'pet2_name'].includes(element.id)) return;
+            if (['pet0_name', 'pet1_name', 'pet2_name', 'pet3_name'].includes(element.id)) return;
 
             // Skip elements that already have a lookup link
             if (element.nextSibling && element.nextSibling.textContent === '[lookup]') return;
@@ -115,11 +318,21 @@
 
             if (!petName) return;
 
+            // Try to extract the pet ID from the element ID (pet4_name -> pet4)
+            let petId = 'unknown';
+            if (element.id && element.id.includes('pet') && element.id.includes('name')) {
+                petId = element.id.replace('_name', '');
+            }
+
             const lookupLink = createLookupLink(petName);
+            const copyButton = createCopyButton(petId, petName);
+
             if (element.nextSibling) {
+                element.parentNode.insertBefore(copyButton, element.nextSibling);
                 element.parentNode.insertBefore(lookupLink, element.nextSibling);
             } else {
                 element.parentNode.appendChild(lookupLink);
+                element.parentNode.appendChild(copyButton);
             }
         });
 
@@ -144,9 +357,20 @@
                      nextCell.textContent.includes('Species') ||
                      nextCell.textContent.includes('Colour'))) {
 
+                    // Create a generic pet ID since we don't have a specific identifier
+                    // Try to guess which pet this is based on row index or position
+                    let petId = 'unknown';
+                    if (cell.parentElement && cell.parentElement.rowIndex !== undefined) {
+                        petId = `pet${cell.parentElement.rowIndex}`;
+                    }
+
                     const lookupLink = createLookupLink(cellText);
+                    const copyButton = createCopyButton(petId, cellText);
+
                     cell.appendChild(document.createTextNode(' '));
                     cell.appendChild(lookupLink);
+                    cell.appendChild(document.createTextNode(' '));
+                    cell.appendChild(copyButton);
                 }
             }
         });
