@@ -8,8 +8,8 @@
 // @match        http://www.neopets.com/pound/*
 // @grant        none
 // @run-at       document-end
-// @downloadURL  
-// @updateURL   
+// @downloadURL  https://github.com/l0aurore/pound_pet_lookup/blob/main/pound_pet_lookup.user.js
+// @updateURL   https://github.com/l0aurore/pound_pet_lookup/blob/main/pound_pet_lookup.user.js
 // ==/UserScript==
 
 (function() {
