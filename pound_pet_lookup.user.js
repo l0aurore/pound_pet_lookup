@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         Neopets Pound Lookup Links
 // @namespace    neopets
-// @version      2.0
-// @description  Adds lookup links and copy info buttons next to pet names in the Neopets pound
-// @author       You
+// @version      3.1
+// @description  Adds lookup links and copy info buttons next to pet names in the Neopets
+// @author       Laurore
 // @match        https://www.neopets.com/pound/*
 // @match        http://www.neopets.com/pound/*
 // @grant        GM_setClipboard
 // @run-at       document-end
+// @update       https://github.com/l0aurore/pound_pet_lookup/blob/main/pound_pet_lookup.user.js
+// @download     https://github.com/l0aurore/pound_pet_lookup/blob/main/pound_pet_lookup.user.js
 // ==/UserScript==
 
 (function() {
@@ -31,6 +33,10 @@
         cursor: pointer;
         font-weight: bold;
     `;
+
+    // Class names for custom elements to help with identification
+    const LOOKUP_LINK_CLASS = 'userscript-pet-lookup-link';
+    const COPY_BUTTON_CLASS = 'userscript-pet-copy-button';
 
     /**
      * Extracts pet information from the page
@@ -180,19 +186,18 @@
         button.textContent = '[Copy !p]';
         button.setAttribute('style', copyButtonStyle);
         button.setAttribute('href', 'javascript:void(0);');
-        button.setAttribute('title', `Copy ${petName}'s for !p command`);
+        button.setAttribute('title', `Copy ${petName}'s info for !p command`);
+        button.classList.add(COPY_BUTTON_CLASS);
+        button.dataset.petId = petId;
 
         button.addEventListener('click', function(e) {
             e.preventDefault();
 
-            // Extract pet number from ID (pet0 -> 0, pet1 -> 1, etc.)
-            const petNumber = petId.replace('pet', '');
-
-            // Get pet information
+            // IMPORTANT: Always get the most up-to-date pet information at click time
+            // This ensures we always get the current pet info even after AJAX updates
             const petInfo = extractPetInfo(petId);
 
-            // Format: !p s_name s_species s_color s_gender
-            // where s is the pet number (0, 1, 2, 3)
+            // Format: !p name species color gender
             const clipboardText = `!p ${petInfo.name} \n ${petInfo.species} \n ${petInfo.color} \n ${petInfo.gender}`;
 
             // Copy to clipboard
@@ -201,12 +206,12 @@
                 if (typeof GM_setClipboard !== 'undefined') {
                     GM_setClipboard(clipboardText);
                     button.textContent = '[copied!]';
-                    setTimeout(() => { button.textContent = '[copy info]'; }, 2000);
+                    setTimeout(() => { button.textContent = '[Copy !p]'; }, 2000);
                 } else {
                     // Fallback to regular clipboard API
                     navigator.clipboard.writeText(clipboardText).then(() => {
                         button.textContent = '[copied!]';
-                        setTimeout(() => { button.textContent = '[copy info]'; }, 2000);
+                        setTimeout(() => { button.textContent = '[Copy !p]'; }, 2000);
                     });
                 }
                 console.log(`Copied to clipboard: ${clipboardText}`);
@@ -222,16 +227,35 @@
     /**
      * Creates a lookup link for a pet name
      * @param {string} petName - The name of the pet
+     * @param {string} petId - The ID of the pet (e.g., "pet0", "pet1")
      * @returns {HTMLElement} - The created link element
      */
-    function createLookupLink(petName) {
+    function createLookupLink(petName, petId) {
         const link = document.createElement('a');
         link.href = `https://www.neopets.com/petlookup.phtml?pet=${encodeURIComponent(petName)}`;
         link.textContent = '[lookup]';
         link.setAttribute('style', linkStyle);
         link.setAttribute('target', '_blank');
         link.setAttribute('title', `Open ${petName}'s lookup in a new tab`);
+        link.classList.add(LOOKUP_LINK_CLASS);
+        link.dataset.petId = petId;
         return link;
+    }
+
+    /**
+     * Removes existing lookup links and copy buttons associated with a pet ID
+     * @param {string} petId - The ID of the pet (e.g., "pet0", "pet1")
+     */
+    function removeExistingLinks(petId) {
+        // Remove lookup links
+        document.querySelectorAll(`.${LOOKUP_LINK_CLASS}[data-pet-id="${petId}"]`).forEach(element => {
+            element.remove();
+        });
+        
+        // Remove copy buttons
+        document.querySelectorAll(`.${COPY_BUTTON_CLASS}[data-pet-id="${petId}"]`).forEach(element => {
+            element.remove();
+        });
     }
 
     /**
@@ -245,13 +269,12 @@
             return;
         }
 
-        // Check if this element already has a lookup link
-        if (petNameElement.nextSibling &&
-            petNameElement.nextSibling.tagName === 'A' &&
-            petNameElement.nextSibling.textContent === '[lookup]') {
-            console.log(`Pet element ${elementId} already has a lookup link`);
-            return;
-        }
+        // Extract just the ID part (e.g., "pet0" from "pet0_name")
+        const petId = elementId.replace('_name', '');
+        
+        // Always remove existing links and buttons for this pet
+        // This ensures we don't get duplicate links and that links are always updated
+        removeExistingLinks(petId);
 
         // Get the pet name, handle both text nodes and input fields
         let petName;
@@ -266,12 +289,9 @@
             return;
         }
 
-        // Create the lookup link and copy button
-        const lookupLink = createLookupLink(petName);
-        const copyButton = createCopyButton(elementId.replace('_name', ''), petName);
-
-        // Extract just the ID part (e.g., "pet0" from "pet0_name")
-        const petId = elementId.replace('_name', '');
+        // Create the lookup link and copy button with the current pet information
+        const lookupLink = createLookupLink(petName, petId);
+        const copyButton = createCopyButton(petId, petName);
 
         // Add both elements to the DOM
         if (petNameElement.nextSibling) {
@@ -285,126 +305,121 @@
     }
 
     /**
-     * Main function to process the page
+     * Process all known pet elements on the page
      */
-    function processPage() {
-        console.log('Neopets Pound Lookup Links script running...');
-
-        // This will add links for all pet name elements pet0_name through pet3_name
-        addLookupLinkToPet('pet0_name');
-        addLookupLinkToPet('pet1_name');
-        addLookupLinkToPet('pet2_name');
-        addLookupLinkToPet('pet3_name');
+    function processAllPets() {
+        console.log('Processing all pets...');
+        
+        // Process the standard 4 pets in the pound
+        for (let i = 0; i < 4; i++) {
+            addLookupLinkToPet(`pet${i}_name`);
+        }
 
         // Additional search for pet names that might follow different patterns
-        // This is a backup approach to find pet elements
         const potentialPetNameElements = document.querySelectorAll('input[name*="pet_name"], input[name*="petname"], td[id*="pet_name"], span[id*="pet_name"]');
         potentialPetNameElements.forEach(element => {
             if (!element.id) return;
-            if (!element.id.includes('pet') || !element.id.includes('name')) return;
-            // Skip elements we've already processed in the first section
-            if (['pet0_name', 'pet1_name', 'pet2_name', 'pet3_name'].includes(element.id)) return;
-
-            // Skip elements that already have a lookup link
-            if (element.nextSibling && element.nextSibling.textContent === '[lookup]') return;
-
-            // Add link to other pet name elements found
-            let petName;
-            if (element.tagName === 'INPUT') {
-                petName = element.value;
-            } else {
-                petName = element.textContent.trim();
-            }
-
-            if (!petName) return;
-
-            // Try to extract the pet ID from the element ID (pet4_name -> pet4)
-            let petId = 'unknown';
-            if (element.id && element.id.includes('pet') && element.id.includes('name')) {
-                petId = element.id.replace('_name', '');
-            }
-
-            const lookupLink = createLookupLink(petName);
-            const copyButton = createCopyButton(petId, petName);
-
-            if (element.nextSibling) {
-                element.parentNode.insertBefore(copyButton, element.nextSibling);
-                element.parentNode.insertBefore(lookupLink, element.nextSibling);
-            } else {
-                element.parentNode.appendChild(lookupLink);
-                element.parentNode.appendChild(copyButton);
-            }
-        });
-
-        // Look for pet name texts that might be in table cells
-        // This handles cases where pet names don't have specific IDs
-        const tableCells = document.querySelectorAll('td');
-        tableCells.forEach(cell => {
-            const cellText = cell.textContent.trim();
-            // Skip cells with no text or very long text (likely not a pet name)
-            if (!cellText || cellText.length > 20 || cellText.includes(':')) return;
-
-            // Skip if cell already contains a lookup link
-            if (cell.innerHTML.includes('[lookup]')) return;
-
-            // Look for cells that might contain pet names based on context
-            const rowCells = cell.parentElement.cells;
-            if (rowCells && rowCells.length > 1) {
-                // Check if the next cell contains attributes like "Level", "Species", etc.
-                const nextCell = cell.nextElementSibling;
-                if (nextCell &&
-                    (nextCell.textContent.includes('Level') ||
-                     nextCell.textContent.includes('Species') ||
-                     nextCell.textContent.includes('Colour'))) {
-
-                    // Create a generic pet ID since we don't have a specific identifier
-                    // Try to guess which pet this is based on row index or position
-                    let petId = 'unknown';
-                    if (cell.parentElement && cell.parentElement.rowIndex !== undefined) {
-                        petId = `pet${cell.parentElement.rowIndex}`;
-                    }
-
-                    const lookupLink = createLookupLink(cellText);
-                    const copyButton = createCopyButton(petId, cellText);
-
-                    cell.appendChild(document.createTextNode(' '));
-                    cell.appendChild(lookupLink);
-                    cell.appendChild(document.createTextNode(' '));
-                    cell.appendChild(copyButton);
-                }
-            }
+            addLookupLinkToPet(element.id);
         });
     }
 
-    // Run the script
-    // Use a short delay to ensure all elements are loaded
-    setTimeout(processPage, 500);
+    /**
+     * Setup MutationObserver to watch for AJAX updates
+     */
+    function setupMutationObserver() {
+        // Define what elements to watch for changes
+        const targetNodes = [
+            // Main pound container - this might vary based on the site structure
+            document.querySelector('#pound-container, #content, .content-area, body') || document.body
+        ];
 
-    // Set up a MutationObserver to detect when new content is added to the page
-    // This is more reliable than the XMLHttpRequest approach for detecting dynamic changes
-    const observer = new MutationObserver(function(mutations) {
-        let shouldProcess = false;
+        // Options for the observer (which mutations to observe)
+        const config = { 
+            childList: true,    // observe direct children
+            subtree: true,      // and lower descendants too
+            attributes: true,   // observe attribute changes
+            characterData: true // observe text content changes
+        };
 
-        // Check if any meaningful changes occurred that might contain pet elements
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                for (let i = 0; i < mutation.addedNodes.length; i++) {
-                    const node = mutation.addedNodes[i];
-                    // Only process if actual elements were added (not text nodes)
-                    if (node.nodeType === 1) {
-                        shouldProcess = true;
-                        break;
+        // Create an observer instance
+        const observer = new MutationObserver(function(mutations) {
+            // Check if any mutation involves pet elements
+            let shouldProcess = false;
+            
+            mutations.forEach(mutation => {
+                // If elements were added/removed
+                if (mutation.type === 'childList') {
+                    // Check if any of the added nodes contain pet information
+                    for (let i = 0; i < mutation.addedNodes.length; i++) {
+                        const node = mutation.addedNodes[i];
+                        if (node.nodeType === 1) { // Element node
+                            if (node.id && (node.id.includes('pet') || node.id.includes('_name'))) {
+                                shouldProcess = true;
+                                break;
+                            }
+                            
+                            // Check if this node contains pet elements
+                            if (node.querySelector && (
+                                node.querySelector('[id*="pet"]') || 
+                                node.querySelector('[id*="_name"]') ||
+                                node.querySelector('[id*="_species"]') ||
+                                node.querySelector('[id*="_color"]')
+                            )) {
+                                shouldProcess = true;
+                                break;
+                            }
+                        }
                     }
                 }
+                // If attributes changed and it's a pet-related element
+                else if (mutation.type === 'attributes' || mutation.type === 'characterData') {
+                    const node = mutation.target;
+                    if (node.id && (
+                        node.id.includes('pet') || 
+                        node.id.includes('_name') ||
+                        node.id.includes('_species') ||
+                        node.id.includes('_color')
+                    )) {
+                        shouldProcess = true;
+                    }
+                }
+            });
+            
+            // If we detected relevant changes, update our links
+            if (shouldProcess) {
+                // Add a slight delay to ensure DOM is fully updated
+                setTimeout(processAllPets, 100);
             }
         });
 
-        if (shouldProcess) {
-            console.log('Detected DOM changes, reprocessing page...');
-            setTimeout(processPage, 300);
-        }
-    });
+        // Start observing each target node
+        targetNodes.forEach(target => {
+            if (target) {
+                observer.observe(target, config);
+            }
+        });
 
-    // Start observing the document with the configured parameters
-    observer.observe(document.body, { childList: true, subtree: true });
+        // Return the observer so it can be disconnected if needed
+        return observer;
+    }
+
+    /**
+     * Main initialization function
+     */
+    function init() {
+        console.log('Neopets Pound Lookup Links script initializing...');
+        
+        // Process all pets initially
+        processAllPets();
+        
+        // Set up mutation observer to handle AJAX updates
+        const observer = setupMutationObserver();
+        
+        // Set up global refresh interval as a fallback mechanism
+        // This helps catch updates that might not trigger the mutation observer
+        setInterval(processAllPets, 5000);
+    }
+
+    // Initialize the script
+    init();
 })();
