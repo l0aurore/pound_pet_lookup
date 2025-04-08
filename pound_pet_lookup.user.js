@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Neopets Pound Lookup Links
 // @namespace    neopets
-// @version      3.1
+// @version      3.2
 // @description  Adds lookup links and copy info buttons next to pet names in the Neopets
 // @author       Laurore
 // @match        https://www.neopets.com/pound/*
@@ -46,9 +46,10 @@
     function extractPetInfo(petId) {
         const petInfo = {
             name: '',
-            species: '',
-            color: '',
-            gender: ''
+            level: '',
+            strength: '',
+            defense: '',
+            speed: ''
         };
 
         // Get the pet name
@@ -59,27 +60,45 @@
 
         // Direct lookup of pet attributes - most accurate method for Neopets pound page
         // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
-        const speciesElement = document.getElementById(`${petId}_species`);
-        if (speciesElement) {
-            petInfo.species = speciesElement.textContent.trim();
+        const levelElement = document.getElementById(`${petId}_level`);
+        if (levelElement) {
+            petInfo.level = levelElement.textContent.trim();
         }
 
-        const colorElement = document.getElementById(`${petId}_color`);
-        if (colorElement) {
-            petInfo.color = colorElement.textContent.trim();
+        // Direct lookup of pet attributes - most accurate method for Neopets pound page
+        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+        const strengthElement = document.getElementById(`${petId}_str`);
+        if (strengthElement) {
+            petInfo.strength = strengthElement.textContent.trim();
         }
 
-        const genderElement = document.getElementById(`${petId}_gender`);
-        if (genderElement) {
-            petInfo.gender = genderElement.textContent.trim();
+        // Direct lookup of pet attributes - most accurate method for Neopets pound page
+        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+        const defenseElement = document.getElementById(`${petId}_def`);
+        if (defenseElement) {
+            petInfo.defense = defenseElement.textContent.trim();
         }
+
+        // Direct lookup of pet attributes - most accurate method for Neopets pound page
+        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+        const speedElement = document.getElementById(`${petId}_speed`);
+        if (speedElement) {
+            petInfo.speed = speedElement.textContent.trim();
+        }
+
 
         // Fallback methods if direct IDs aren't found
-        if (!petInfo.species || !petInfo.color || !petInfo.gender) {
+        // Direct lookup of pet attributes - most accurate method for Neopets pound page
+        if (!petInfo.level || !petInfo.strength || !petInfo.defense || !petInfo.speed) {
+        // The pound page has specific IDs for these attributes: petX_level, petX_str, petX_def, petX_speed
             // Try to find associated pet attributes by looking at nearby elements
+        const speedElement = document.getElementById(`${petId}_speed`);
             if (nameElement) {
+        if (speedElement) {
                 // Method 1: Look for spans or divs with pet details nearby
+            petInfo.speed = speedElement.textContent.trim();
                 const petContainer = nameElement.closest('div[id^="pet"]');
+        }
                 if (petContainer) {
                     // Try to find a table with pet stats
                     const statsTable = petContainer.querySelector(`table[id="${petId}_table"]`) ||
@@ -93,12 +112,14 @@
                                 const label = cells[0].textContent.trim().toLowerCase();
                                 const value = cells[1].textContent.trim();
 
-                                if (label.includes('species')) {
-                                    petInfo.species = value;
-                                } else if (label.includes('colour') || label.includes('color')) {
-                                    petInfo.color = value;
-                                } else if (label.includes('gender')) {
-                                    petInfo.gender = value;
+                                if (label.includes('level')) {
+                                    petInfo.level = value;
+                                } else if (label.includes('strength')) {
+                                    petInfo.strength = value;
+                                } else if (label.includes('defense')) {
+                                    petInfo.defense = value;
+                                } else if (label.includes('speed')) {
+                                    petInfo.speed = value;
                                 }
                             }
                         });
@@ -107,18 +128,22 @@
                         const allElements = petContainer.querySelectorAll('*');
                         allElements.forEach(element => {
                             const text = element.textContent.trim();
-                            if (text.includes('Species:')) {
-                                petInfo.species = text.replace('Species:', '').trim();
+                            if (text.includes('Level:')) {
+                                petInfo.level = text.replace('Level:', '').trim();
                             }
-                            if (text.includes('Colour:') || text.includes('Color:')) {
-                                petInfo.color = text.replace(/Colou?r:/, '').trim();
+                            if (text.includes('Strength:')) {
+                                petInfo.strength = text.replace('Strength:', '').trim();
                             }
-                            if (text.includes('Gender:')) {
-                                petInfo.gender = text.replace('Gender:', '').trim();
+                            if (text.includes('Defense:')) {
+                                petInfo.defense = text.replace('Defense:', '').trim();
+                            }
+                            if (text.includes('Movement:')) {
+                                petInfo.speed = text.replace('Movement:', '').trim();
                             }
                         });
                     }
                 }
+
 
                 // Method 2: Check for species and color in the same row
                 const row = nameElement.closest('tr');
@@ -137,39 +162,46 @@
                         }
                     });
                 }
-
                 // Method 3: Look in nearby "pet details" container
                 const petDetailsContainer = nameElement.closest('.pet-row, .pet-details, .petdetails, .pet-container');
                 if (petDetailsContainer) {
                     const detailsText = petDetailsContainer.textContent;
 
-                    // Extract species
-                    const speciesMatch = detailsText.match(/Species:\s*([a-zA-Z]+)/);
-                    if (speciesMatch && speciesMatch[1]) {
-                        petInfo.species = speciesMatch[1].trim();
+                    // Extract Level
+                    const levelMatch = detailsText.match(/Level:\s*([0-9]*$)/);
+                    if (levelMatch && levelMatch[1]) {
+                        petInfo.level = levelMatch[1].trim();
                     }
 
-                    // Extract color
-                    const colorMatch = detailsText.match(/Colou?r:\s*([a-zA-Z]+)/);
-                    if (colorMatch && colorMatch[1]) {
-                        petInfo.color = colorMatch[1].trim();
+                    // Extract strength
+                    const strengthMatch = detailsText.match(/Strength:\s*([0-9]*$)/);
+                    if (strengthMatch && strengthMatch[1]) {
+                        petInfo.strength = strengthMatch[1].trim();
                     }
 
-                    // Extract gender
-                    if (detailsText.match(/\b(male)\b/i)) {
-                        petInfo.gender = 'male';
-                    } else if (detailsText.match(/\b(female)\b/i)) {
-                        petInfo.gender = 'female';
+                    // Extract Defense
+                    const defenseMatch = detailsText.match(/Defense:\s*([0-9]*$)/);
+                    if (defenseMatch && defenseMatch[1]) {
+                        petInfo.defense = defenseMatch[1].trim();
                     }
+
+                    // Extract Movement
+                    const speedMatch = detailsText.match(/Movement:\s*([0-9]*$)/);
+                    if (speedMatch && speedMatch[1]) {
+                        petInfo.speed = speedMatch[1].trim();
+                    }
+
                 }
             }
         }
 
         // For test page compatibility - directly extract from data attributes if available
         if (nameElement && nameElement.dataset) {
-            if (nameElement.dataset.species) petInfo.species = nameElement.dataset.species;
-            if (nameElement.dataset.color) petInfo.color = nameElement.dataset.color;
-            if (nameElement.dataset.gender) petInfo.gender = nameElement.dataset.gender;
+            if (nameElement.dataset.level) petInfo.level = nameElement.dataset.level;
+            if (nameElement.dataset.strength) petInfo.strength = nameElement.dataset.strength;
+            if (nameElement.dataset.defense) petInfo.defense = nameElement.dataset.defense;
+            if (nameElement.dataset.speed) petInfo.speed = nameElement.dataset.speed;
+
         }
 
         return petInfo;
@@ -197,8 +229,8 @@
             // This ensures we always get the current pet info even after AJAX updates
             const petInfo = extractPetInfo(petId);
 
-            // Format: !p name species color gender
-            const clipboardText = `!p ${petInfo.name} \n ${petInfo.species} \n ${petInfo.color} \n ${petInfo.gender}`;
+            // Format: !p name, level, strength, defense, movement
+            const clipboardText = `!p ${petInfo.name} \n LVL: ${petInfo.level} \n STR: ${petInfo.strength} \n DEF: ${petInfo.defense} \n MOV: ${petInfo.speed}`;
 
             // Copy to clipboard
             try {
@@ -362,8 +394,10 @@
                             if (node.querySelector && (
                                 node.querySelector('[id*="pet"]') || 
                                 node.querySelector('[id*="_name"]') ||
-                                node.querySelector('[id*="_species"]') ||
-                                node.querySelector('[id*="_color"]')
+                                node.querySelector('[id*="_level"]') ||
+                                node.querySelector('[id*="_str"]') ||
+                                node.querySelector('[id*="_def"]') ||
+                                node.querySelector('[id*="_speed"]')
                             )) {
                                 shouldProcess = true;
                                 break;
@@ -376,9 +410,11 @@
                     const node = mutation.target;
                     if (node.id && (
                         node.id.includes('pet') || 
-                        node.id.includes('_name') ||
-                        node.id.includes('_species') ||
-                        node.id.includes('_color')
+                        node.id.includes('_name')||
+                        node.id.includes('_level')||
+                        node.id.includes('_str') ||
+                        node.id.includes('_def')||
+                        node.id.includes('_speed')
                     )) {
                         shouldProcess = true;
                     }
