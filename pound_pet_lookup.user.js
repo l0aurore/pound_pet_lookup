@@ -1,11 +1,13 @@
 // ==UserScript==
-// @name         Neopets Pound Lookup Links
+// @name         Quick pound !p and age Converter
 // @namespace    neopets
-// @version      3.2
-// @description  Adds lookup links and copy info buttons next to pet names in the Neopets
+// @version      4.3
+// @description  Adds lookup links and bot copy info buttons next to pet names in the Neopets
 // @author       Laurore
-// @match        https://www.neopets.com/pound/*
-// @match        http://www.neopets.com/pound/*
+// @match        *://www.neopets.com/pound/*
+// @match        *://www.neopets.com/userlookup.phtml?user=*
+// @match        *://www.neopets.com/petlookup.phtml?pet=*
+// @match        *://www.neopets.com/quickref.phtml
 // @grant        GM_setClipboard
 // @run-at       document-end
 // @update       https://github.com/l0aurore/pound_pet_lookup/blob/main/pound_pet_lookup.user.js
@@ -38,6 +40,111 @@
     const LOOKUP_LINK_CLASS = 'userscript-pet-lookup-link';
     const COPY_BUTTON_CLASS = 'userscript-pet-copy-button';
 
+    function convertPetAge(petAgeDays) {
+        const yearsOld = petAgeDays / 365; // 3657/365=10
+        const currentYear = new Date().getFullYear(); // = 2025
+        const currentNeopianYear = ((currentYear + 2)-2000); // = ((2025+2)-2000)=27
+        const neopianFoundingYear = 1;
+        const neopetsFoundingYear = 1999;
+        const neopianYear = (currentNeopianYear - yearsOld); // 27-10 = y17
+
+
+
+        return {
+            days: petAgeDays,
+            yearsOld,
+            neopianYear: parseFloat(neopianYear.toFixed(1)),
+        };
+    }
+
+
+
+
+    const url = window.location.href;
+
+    if (url.includes("pound")) {
+        extractPetInfo();
+    } else if (url.includes("userlookup.phtml")) {
+        handleUserLookupPage();
+    } else if (url.includes("petlookup")) {
+        extractPetInfo();
+    } else if (url.includes("quickref.phtml")) {
+        extractPetInfo();
+    }
+
+    function handleUserLookupPage() {
+    const petList = document.querySelectorAll('#bxlist > li');
+
+
+    petList.forEach(pet => {
+
+        const petHTML = pet.innerHTML;
+
+        const nameMatch = petHTML.match(/<b>([^<]+)<\/b><br>/);
+        const petName = nameMatch ? nameMatch[1].trim() : null;
+
+        const ageMatch = petHTML.match(/<b>Age:<\/b>\s*([\d,]+) days/);
+        const petAgeDays = ageMatch ? parseInt(ageMatch[1].replace(/,/g, '')) : null;
+
+        const levelMatch = petHTML.match(/<b>Level:<\/b>\s*([\d,]+)/);
+        const petLevel = levelMatch ? parseInt(levelMatch[1]) :null;
+
+        const { yearsOld, neopianYear } = convertPetAge(petAgeDays);
+
+        if (petName && petAgeDays && petLevel) {
+            
+            const centerElement = pet.querySelector('center');
+            if (centerElement) {
+                const commandDiv = document.createElement('div');
+                commandDiv.style.marginTop = '4px' ;
+
+                const commandSpan = document.createElement('span');
+                commandSpan.style.cursor = 'pointer';
+                commandSpan.style.color = '#00f';
+                commandSpan.textContent = '!p';
+                commandSpan.title = `Copy pet info`;
+
+                commandSpan.addEventListener('click', () => {
+                    const text = `!p ${petName}  **Y${neopianYear}** \n Level: ${petLevel}` ;
+                    navigator.clipboard.writeText(text).then(() => {
+                        commandSpan.textContent = 'copied';
+                        setTimeout(() => (commandSpan.textContent = '!p'), 1500);
+                    });
+                });
+
+                commandDiv.appendChild(commandSpan);
+                centerElement.appendChild(commandDiv);
+
+                const ageLabel = Array.from(centerElement.querySelectorAll('b')).find(
+                    b => b.textContent.trim() === 'Age:'
+                );
+
+                if (ageLabel && ageLabel.nextSibling && ageLabel.nextSibling.nodeType === Node.TEXT_NODE) {
+                    const originalText = ageLabel.nextSibling.textContent.trim(); // "3,897 days"
+                    ageLabel.nextSibling.textContent = ` ${petAgeDays} d ||  Y${neopianYear}`;
+                }
+
+            }
+        }
+
+    });
+
+}
+
+
+
+/**
+    function handlePetLookupPage() {
+        // extract pet info and petpet info directly from current page, not yet done
+    }
+
+    function handleQuickRefPage() {
+        // parse the pet list table, extract names, and petpet info, not yet done
+    }
+*/
+
+
+
     /**
      * Extracts pet information from the page
      * @param {string} petId - The ID of the pet (e.g., "pet0", "pet1")
@@ -59,28 +166,25 @@
         }
 
         // Direct lookup of pet attributes - most accurate method for Neopets pound page
-        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+        // The pound page has specific IDs for these attributes, petx_: name, level, str, def, speed,
         const levelElement = document.getElementById(`${petId}_level`);
         if (levelElement) {
             petInfo.level = levelElement.textContent.trim();
         }
 
-        // Direct lookup of pet attributes - most accurate method for Neopets pound page
-        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+    
         const strengthElement = document.getElementById(`${petId}_str`);
         if (strengthElement) {
             petInfo.strength = strengthElement.textContent.trim();
         }
 
-        // Direct lookup of pet attributes - most accurate method for Neopets pound page
-        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+       
         const defenseElement = document.getElementById(`${petId}_def`);
         if (defenseElement) {
             petInfo.defense = defenseElement.textContent.trim();
         }
 
-        // Direct lookup of pet attributes - most accurate method for Neopets pound page
-        // The pound page has specific IDs for these attributes: petX_species, petX_color, petX_gender
+       
         const speedElement = document.getElementById(`${petId}_speed`);
         if (speedElement) {
             petInfo.speed = speedElement.textContent.trim();
@@ -145,24 +249,7 @@
                 }
 
 
-                // Method 2: Check for species and color in the same row
-                const row = nameElement.closest('tr');
-                if (row) {
-                    const cells = row.querySelectorAll('td');
-                    cells.forEach(cell => {
-                        const text = cell.textContent.trim();
-                        if (text.includes('Species:')) {
-                            petInfo.species = text.replace('Species:', '').trim();
-                        }
-                        if (text.includes('Colour:') || text.includes('Color:')) {
-                            petInfo.color = text.replace(/Colou?r:/, '').trim();
-                        }
-                        if (text.includes('Gender:') || text.match(/\b(male|female)\b/i)) {
-                            petInfo.gender = text.includes('male') ? 'male' : 'female';
-                        }
-                    });
-                }
-                // Method 3: Look in nearby "pet details" container
+                // Method 2: Look in nearby "pet details" container
                 const petDetailsContainer = nameElement.closest('.pet-row, .pet-details, .petdetails, .pet-container');
                 if (petDetailsContainer) {
                     const detailsText = petDetailsContainer.textContent;
