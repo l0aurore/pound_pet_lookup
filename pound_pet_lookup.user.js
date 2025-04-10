@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Quick pound !p and age Converter
 // @namespace    neopets
-// @version      4.3
+// @version      4.4
 // @description  Adds lookup links and bot copy info buttons next to pet names in the Neopets
 // @author       Laurore
 // @match        *://www.neopets.com/pound/*
@@ -40,22 +40,29 @@
     const LOOKUP_LINK_CLASS = 'userscript-pet-lookup-link';
     const COPY_BUTTON_CLASS = 'userscript-pet-copy-button';
 
-    function convertPetAge(petAgeDays) {
-        const yearsOld = petAgeDays / 365; // 3657/365=10
-        const currentYear = new Date().getFullYear(); // = 2025
-        const currentNeopianYear = ((currentYear + 2)-2000); // = ((2025+2)-2000)=27
-        const neopianFoundingYear = 1;
-        const neopetsFoundingYear = 1999;
-        const neopianYear = (currentNeopianYear - yearsOld); // 27-10 = y17
+    function convertPetAge({ petAgeDays = null, petAgeHours = null }) {
+        let yearsOld;
 
+        if (petAgeDays !== null) {
+            yearsOld = petAgeDays / 365;
+        } else if (petAgeHours !== null) {
+            yearsOld = petAgeHours / (24 * 365); // Convert hours → years
+        } else {
+            yearsOld = 0; // Fallback if neither is available
+        }
 
+        const currentYear = new Date().getFullYear(); // e.g., 2025
+        const currentNeopianYear = (currentYear + 2) - 2000; // e.g., (2025 + 2) - 2000 = 27
+        const neopianYear = currentNeopianYear - yearsOld;
 
         return {
             days: petAgeDays,
-            yearsOld,
-            neopianYear: parseFloat(neopianYear.toFixed(1)),
+            hours: petAgeHours,
+            yearsOld: parseFloat(yearsOld.toFixed(2)),
+            neopianYear: parseFloat(neopianYear.toFixed(1))
         };
     }
+
 
 
 
@@ -83,15 +90,25 @@
         const nameMatch = petHTML.match(/<b>([^<]+)<\/b><br>/);
         const petName = nameMatch ? nameMatch[1].trim() : null;
 
+        const ageHourMatch = petHTML.match(/<b>Age:<\/b>\s*([\d,]+) hours/);
+        const petAgeHours = ageHourMatch ? parseInt(ageHourMatch[1].replace(/,/g, '')) : null;
+
         const ageMatch = petHTML.match(/<b>Age:<\/b>\s*([\d,]+) days/);
         const petAgeDays = ageMatch ? parseInt(ageMatch[1].replace(/,/g, '')) : null;
 
         const levelMatch = petHTML.match(/<b>Level:<\/b>\s*([\d,]+)/);
         const petLevel = levelMatch ? parseInt(levelMatch[1]) :null;
 
-        const { yearsOld, neopianYear } = convertPetAge(petAgeDays);
+        const { yearsOld, neopianYear } = convertPetAge({
+            petAgeDays,
+            petAgeHours
+        });
 
-        if (petName && petAgeDays && petLevel) {
+
+
+
+
+        if (petName && petAgeDays||petAgeHours && petLevel) {
             
             const centerElement = pet.querySelector('center');
             if (centerElement) {
@@ -120,8 +137,17 @@
                 );
 
                 if (ageLabel && ageLabel.nextSibling && ageLabel.nextSibling.nodeType === Node.TEXT_NODE) {
-                    const originalText = ageLabel.nextSibling.textContent.trim(); // "3,897 days"
-                    ageLabel.nextSibling.textContent = ` ${petAgeDays} d ||  Y${neopianYear}`;
+                    let ageDisplay = '';
+
+                    if (petAgeDays !== null) {
+                        ageDisplay = `${petAgeDays} d || Y${neopianYear}`;
+                    } else if (petAgeHours !== null) {
+                        ageDisplay = `${petAgeHours} h || Y${neopianYear}`;
+                    } else {
+                        ageDisplay = `unknown || Y${neopianYear}`;
+                    }
+
+                    ageLabel.nextSibling.textContent = ` ${ageDisplay}`;
                 }
 
             }
